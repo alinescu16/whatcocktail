@@ -10,7 +10,7 @@ use GuzzleHttp\Exception\RequestException;
 class Cocktail extends Controller
 {
     // Create 
-    public function create_cocktail($form_data) 
+    public function create_cocktail(array $form_data) : int
     {   
         global $wpdb;
 
@@ -38,7 +38,7 @@ class Cocktail extends Controller
     }
 
     // Read 
-    public function get_cocktail($id) 
+    public function get_cocktail(int $id) : stdClass | array
     {
         global $wpdb;
 
@@ -55,7 +55,7 @@ class Cocktail extends Controller
     }
 
     // Update
-    public function update_cocktail($id, $form_data) 
+    public function update_cocktail(int $id, array $form_data) : int
     {
         global $wpdb;
 
@@ -84,7 +84,7 @@ class Cocktail extends Controller
     }
 
     // Delete
-    public function delete_cocktail($id) 
+    public function delete_cocktail(int $id) : int
     {
         global $wpdb;
 
@@ -93,16 +93,23 @@ class Cocktail extends Controller
         return $wpdb->rows_affected;
     }
 
-    public function save_cocktail($cocktail)
+    /**
+     * Save the cocktail to a user's session.
+     * 
+     * Try to find the Cocktail ID, try to get the user identifier and it's ID, then use the pivot table to link them.
+     * 
+     * @param       $name : string | array
+     * 
+     * @return      WP_REST_Response
+     */
+    public function save_cocktail(string | array $cocktail) : \WP_REST_Response
     {
         // User can not be identified, we can not save the cocktail for the user so we return an error
-        // TODO:: Change to WP_ERR
         if ( !isset( $_COOKIE['user_identifier'] ) ) {
-            return json_encode(array(
+            return new \WP_REST_Response( array(
                 'success' => false,
-                'code' => 500,
-                'message' => 'User can not be identified.'
-            ));
+                'message' => "User can not be identified."
+            ), 500);
         }
 
         // We try to get the cocktail id
@@ -112,14 +119,12 @@ class Cocktail extends Controller
             $cocktail_id = $this->get_cocktail_id_by_name($cocktail);
         } 
 
-        // If we don't have an array of values and we don't have a cocktail id, we return a message as we can not create a cocktail
-        // TODO:: Change to WP_ERR
+        // If we don't have an array of values and we don't have a cocktail id, we return a message that we can not create and save a cocktail
         if (!$cocktail_id && is_string($cocktail)) {
-            return json_encode(array(
+            return new \WP_REST_Response( array(
                 'success' => false,
-                'code' => 500,
-                'message' => 'Cocktail can not be found or created.'
-            ));
+                'message' => "Cocktail can not be found or created, thus not marked as saved."
+            ), 500);
         }
 
         // If we have an array of values and we don't have a cocktail id, we try to create it
@@ -145,18 +150,87 @@ class Cocktail extends Controller
 
         $wpdb->insert($wpdb->prefix . 'user_saved_cocktails', $data, $format);
 
-        return json_encode(array(
+        return new \WP_REST_Response( array(
             'success' => true,
-            'code' => 200,
             'data' => $wpdb->insert_id
-        ));
+        ), 200);
     }
 
-    public function get_cocktail_recipe($cocktail) {
-        // TODO:: 
+    /**
+     * Get Cocktail's Ingredients.
+     * 
+     * Given a cocktail name, it queries it and returns the ingredients.
+     * Given a cocktail data array, it extracts the ingredients if they are present or, it queries it and returns the ingredients.
+     * 
+     * @param       $cocktail : int | string | array
+     * 
+     * @return      \WP_REST_Response
+     */
+    public function get_cocktail_ingredients(int | string | array $cocktail) : \WP_REST_Response
+    {
+
+        $ingredients = array();
+
+        if (is_int($cocktail)) {
+            try {
+                $ingredients = $this->get_cocktail($cocktail)->ingredients;    
+            } catch (\Exception $e) {
+                return new \WP_REST_Response( array(
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ), 500);
+            }
+        }
+
+        if (is_string($cocktail)) {
+            try {
+                $ingredients = $this->get_cocktail($this->get_cocktail_id_by_name($cocktail))->ingredients;    
+            } catch (\Exception $e) {
+                return new \WP_REST_Response( array(
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ), 500);
+            }
+        }
+
+        if (is_array($cocktail)) {
+            if (isset($cocktail['ingredients'])) {
+                $ingredients = $cocktail['ingredients'];
+            }
+
+            if (isset($cocktail['id'])) {
+                try {
+                    $ingredients = $this->get_cocktail($cocktail['id'])->ingredients;
+                } catch (\Exception $e) {
+                    return new \WP_REST_Response( array(
+                        'success' => false,
+                        'message' => $e->getMessage()
+                    ), 500);
+                }
+            }
+        }
+
+        if (!empty($ingredients)) {
+            return new \WP_REST_Response( array(
+                'success' => true,
+                'data' => $ingredients
+            ), 200);
+        }
+
+        return new \WP_REST_Response( array(
+            'success' => false,
+            'message' => "Server error."
+        ), 500);
     }
 
-    private function get_cocktail_id_by_name($name)
+    /**
+     * Query the Cocktail ID from the database. If the cocktail can not be found, create it and return the inserted ID. If fail, return 0.
+     * 
+     * @param       $name : string
+     * 
+     * @return      int
+     */
+    private function get_cocktail_id_by_name(string $name) : int
     {
         global $wpdb;
 
@@ -167,10 +241,26 @@ class Cocktail extends Controller
             return $result->id;
         }
 
-        // TODO
-            // Query API
+        // Query API
+        $request = new \WP_REST_Request();
+
+        $request->set_body(json_encode(array(
+            "name" => $name
+        )));
+
+        $response = $this->get_cocktail_from_api($request);
+
+        if ( !$response->is_error() ) {
             // Create
-            // Return ID
+            $cocktail_data = json_decode($response);
+
+            if (isset($cocktail_data['data']) && isset($cocktail_data['data']['cocktails'])) {
+                return $this->create_cocktail($cocktail_data['data']['cocktails'][0]);
+            }
+        }
+
+        return 0;
+
     }
 
     /**
