@@ -8,6 +8,13 @@ use App\Http\Controllers\Cocktail;
 
 class ShoppingList extends Controller
 {
+    /**
+     * Format the ingredients into a list of non-duplicates with total quantity and amount for each ingredient
+     * 
+     * @param       $cocktails : array
+     * 
+     * @return      WP_REST_RESPONSE
+     */
     public function get_total_ingredients(array $cocktails) : \WP_REST_RESPONSE
     {   
         $ingredients = array();

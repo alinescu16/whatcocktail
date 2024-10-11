@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 
 use GuzzleHttp\Client;
+use SerpApi\GoogleSearch;
 
 class ApiServiceProvider extends ServiceProvider
 {
@@ -34,5 +35,11 @@ class ApiServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(Client::class, 'http.client');
+
+        $this->app->bind(GoogleSearch::class, function () {
+            return new GoogleSearch("ae6736410d4242d5580d56d457cb9f7cc2f045860bb59fcb7d30bd494872d751");
+        });
+
+        $this->app->alias(GoogleSearch::class, 'http.image.client');
     }
 }

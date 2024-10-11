@@ -8,4 +8,5 @@
     @include('sections.home-heading')
     @include('sections.what-is-cocktail')
     @include('sections.popular')
+    @include('partials.content-donate', ['dark' => true])
 @endsection

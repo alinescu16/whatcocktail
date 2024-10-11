@@ -10,7 +10,7 @@
   <body @php(body_class())>
     @php(wp_body_open())
 
-    <div id="app" class="xl:container-xl xl:mx-auto container">
+    <div id="app" class="">
       <a class="sr-only focus:not-sr-only" href="#main">
         {{ __('Skip to content') }}
       </a>

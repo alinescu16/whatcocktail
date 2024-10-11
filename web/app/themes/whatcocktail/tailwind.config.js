@@ -4,6 +4,12 @@ const config = {
   theme: {
     extend: {
       colors: {}, // Extend Tailwind's default colors
+      outlineWidth: {
+        'none': 'none',
+      }
+    },
+    container: {
+      center: true,
     },
   },
   plugins: [],

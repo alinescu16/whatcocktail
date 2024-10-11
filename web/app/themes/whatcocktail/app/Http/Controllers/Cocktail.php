@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class Cocktail extends Controller
 {
+    private $cocktails = 0;
+
     // Create 
     public function create_cocktail(array $form_data) : int
     {   
@@ -278,11 +280,11 @@ class Cocktail extends Controller
         
         $query = '';
 
+        // Get Cocktail by Name
         if (isset($form_data['name'])) {
             $query = $form_data['name'];
             
             try {
-                
                 $response = $client->request('GET', 'cocktailname', array(
                     'query' => array( 'name' => $query )
                 ));
@@ -291,9 +293,31 @@ class Cocktail extends Controller
                     $cocktail_data = json_decode($response->getBody(), true);
 
                     if (isset($cocktail_data['data']) && isset($cocktail_data['data']['cocktails'])) {
+                        $cocktail_data = $cocktail_data['data']['cocktails'][0];
+
+                        /**
+                         * Get the cocktail's number of ingredients and estimated preparation time based on it.
+                         */
+                        if (isset($cocktail_data['ingredients'])) {
+                            $cocktail_data['ingredients_count'] = 0;
+
+                            foreach($cocktail_data['ingredients'] as $ingredient) {
+                                $cocktail_data['ingredients_count'] += isset($ingredient['ingredient']) ? 1 : 0;
+                            }
+
+                            $cocktail_data['estimated_preparation_time'] = $this->estimate_cocktail_preparation_time($cocktail_data['ingredients_count']);
+                        }
+                        
+                        /**
+                         * Get the cocktail image 
+                         */
+                        if (isset($cocktail_data['name'])) {
+                            $cocktail_data['image'] = $this->get_cocktail_image($cocktail_data['name']);
+                        }
+
                         return new \WP_REST_Response( array(
                             'status' => $response->getStatusCode(),
-                            'data' => $cocktail_data['data']['cocktails']
+                            'data' => $cocktail_data
                         ), 200);
                     }
                 }
@@ -310,6 +334,7 @@ class Cocktail extends Controller
             }
         }
 
+        // Get Cocktail by Ingredients
         if (isset($form_data['ingredients'])) {
             $query = $form_data['ingredients'];
 
@@ -323,9 +348,31 @@ class Cocktail extends Controller
                     $cocktail_data = json_decode($response->getBody(), true);
 
                     if (isset($cocktail_data['data']) && isset($cocktail_data['data']['cocktails'])) {
+                        $cocktail_data = $cocktail_data['data']['cocktails'][0];
+
+                        /**
+                         * Get the cocktail's number of ingredients and estimated preparation time based on it.
+                         */
+                        if (isset($cocktail_data['ingredients'])) {
+                            $cocktail_data['ingredients_count'] = 0;
+
+                            foreach($cocktail_data['ingredients'] as $ingredient) {
+                                $cocktail_data['ingredients_count'] += isset($ingredient['ingredient']) ? 1 : 0;
+                            }
+
+                            $cocktail_data['estimated_preparation_time'] = $this->estimate_cocktail_preparation_time($cocktail_data['ingredients_count']);
+                        }
+                        
+                        /**
+                         * Get the cocktail image 
+                         */
+                        if (isset($cocktail_data['name'])) {
+                            $cocktail_data['image'] = $this->get_cocktail_image($cocktail_data['name']);
+                        }
+
                         return new \WP_REST_Response( array(
                             'status' => $response->getStatusCode(),
-                            'data' => $cocktail_data['data']['cocktails']
+                            'data' => $cocktail_data
                         ), 200);
                     }
                 }
@@ -348,4 +395,200 @@ class Cocktail extends Controller
         ), 500);
     }
 
+    /**
+     * Cocktail details getter function
+     *
+     * @return array
+     */
+    public static function get_random_cocktails() : array
+    {
+        $client = app('http.client');
+
+        $cocktails = array();
+
+        while ($this->cocktails < 3) {
+            try {
+                $response = $client->get('randomcocktail');
+
+                if ($response->getStatusCode() == 200) {
+                    $cocktail_data = json_decode($response->getBody(), true);
+
+                    if (isset($cocktail_data['data']) && isset($cocktail_data['data']['cocktails'])) {
+                        $cocktail_data = $cocktail_data['data']['cocktails'][0];
+
+                        /**
+                         * Get the cocktail's number of ingredients and estimated preparation time based on it.
+                         */
+                        if (isset($cocktail_data['ingredients'])) {
+                            $cocktail_data['ingredients_count'] = 0;
+
+                            foreach($cocktail_data['ingredients'] as $ingredient) {
+                                $cocktail_data['ingredients_count'] += isset($ingredient['ingredient']) ? 1 : 0;
+                            }
+
+                            $cocktail_data['estimated_preparation_time'] = $this->estimate_cocktail_preparation_time($cocktail_data['ingredients_count']);
+                        }
+                        
+                        /**
+                         * Get the cocktail image 
+                         */
+                        if (isset($cocktail_data['name'])) {
+                            $cocktail_data['image'] = $this->get_cocktail_image($cocktail_data['name']);
+                        }
+
+                        $cocktails[] = $cocktail_data;
+                    }
+                }
+            } catch (ClientException $e) {
+                error_log("Getting Random Cocktail error: {$e->getMessage()}");
+
+                return new \WP_REST_Response( array(
+                    'success' => false,
+                    'message' => "API Unavailable."
+                ), 500);    
+            } catch (Exception $e) {
+                error_log("Error while getting random cocktails: {$e->getMessage()}");
+            }
+
+            $this->cocktails++;
+        }
+
+        return $cocktails;
+    }
+
+    /**
+     * Estimate the cocktail preparation time based on the number of ingredients.
+     * 
+     * @param $ingredients_count : int
+     *
+     * @return array
+     */
+    private function estimate_cocktail_preparation_time($ingredients_count) : array
+    {   
+        // Early return if we don't have enaugh ingredients
+        if ((int) $ingredients_count <= 10) {
+            return array(10, 15);
+        }
+
+        $estimated_time = floor($ingredients_count / 5) * 5; 
+        
+        return array($estimated_time - 5, $estimated_time + 5);
+    }
+
+    /**
+     * Get cocktail's image, and upload it to WordPress if it isn't already.
+     * 
+     * @param $name : string
+     *
+     * @return array 
+     */
+    private function get_cocktail_image($name) : array 
+    {
+        $image_url = '';
+        $image = $this->get_image_from_app($name);
+
+        // Early return if we have an image for that cocktial
+        if ($image) {
+            return $image;
+        }
+
+        $image_client = app('http.image.client');
+
+        $images = json_decode($images_client->get_json(array(
+            "engine" => "google_images",
+            "q" => $name,
+        )));
+
+        // Early return if the call didn't returned a success status
+        if ($images['search_metadata']['status'] != 'Success') {
+            return array(
+                'status' => false,
+                'message' => 'API not available.'
+            );
+        }
+
+        foreach($images['images_results'] as $image) {
+            $image_url = $image['original'];
+
+            $path_info = pathinfo($image_url);
+
+            if (isset($path_info['extension']) && in_array(strtolower($path_info['extension']), ['jpg', 'jpeg', 'png'])) {
+                break;
+            }
+        }
+
+        try {
+            $temp_file = download_url($image_url);
+
+            if (is_wp_error($temp_file)) {
+                throw new \Exception($temp_file->get_error_message());
+            }
+
+            $file_array = array(
+                'name' => basename($image_url),
+                'tmp_name' => $temp_file
+            );
+
+            $attachment_id = media_handle_sideload($file_array, 0);
+
+            if (is_wp_error($attachment_id)) {
+                throw new \Exception($attachment_id->get_error_message());
+            }
+
+            update_post_meta( $attachment_id, 'cocktail_name', $name );           
+
+            return array(
+                'status' => true,
+                'image' => wp_get_attachment_url($attachment_id),
+                'thumbnail' => wp_get_attachment_image_src($attachment_id, 'medium')
+            );
+        } catch (\Exception $e) {
+            error_log("Image upload error: " . $e->getMessage());
+
+            return array(
+                'status' => false,
+                'message' => "Exception while uploading Cocktail\'s image: {$e->getMessage()}."
+            );
+        } finally {
+            @unlink($temp_file);
+        }
+    }
+
+    /**
+     * Try to get cocktail's image from our app.
+     * 
+     * @return array | bool
+     */
+    private function get_image_from_app($name) : array | bool
+    {
+        $args = array(
+        'post_type' => 'attachment',
+        'post_status' => 'inherit',
+        'meta_query' => array(
+            array(
+                'key' => 'cocktail_name',
+                'value' => $name,
+                'compare' => '='
+            ))
+        );  
+
+        $query = new WP_Query( $args );
+
+        // Early return if we don't have posts
+        if ( !$query->have_posts() ) {
+            return false;
+        }
+
+        while ( $query->have_posts() ) {
+            $query->the_post();
+
+            return array(
+                'status' => true,
+                'image' => wp_get_attachment_url( $attachment_id ),
+                'thumbnail' => wp_get_attachment_image_src($attachment_id, 'medium')
+            );
+        }
+
+        wp_reset_postdata();    
+    }
 }

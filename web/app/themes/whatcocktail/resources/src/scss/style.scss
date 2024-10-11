@@ -1,0 +1,10 @@
+@include montserrat(400);
+@include montserrat(400, 'light');
+@include montserrat(400, 'bold');
+@include montserrat(600, 'bold');
+@include montserrat(700, 'bold');
+@include montserrat(800, 'bold');
+
+body {
+	background-color: #F8F6F4;
+}

@@ -14,7 +14,7 @@ export default async (app) => {
    * @see {@link https://bud.js.org/reference/bud.assets}
    */
   app
-    .entry('app', ['@scripts/app', '@styles/app'])
+    .entry('app', ['@scripts/app', '@styles/app', '@src/src/scss/style'])
     .entry('editor', ['@scripts/editor', '@styles/editor'])
     .assets(['images']);
 
@@ -34,7 +34,12 @@ export default async (app) => {
    */
   app
     .setUrl('http://whatcocktail.localhost')
-    .watch(['resources/views', 'app']);
+    .watch(['resources/views', 'app'])
+    .watch(['resources/src/scss', 'app']);
+
+
+  app.sass.importGlobal('@src/src/scss/components/fonts') 
+  
 
   /**
    * Generate WordPress `theme.json`
